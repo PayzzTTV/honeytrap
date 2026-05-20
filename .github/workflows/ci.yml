@@ -1,0 +1,68 @@
+name: HoneyTrap CI
+
+on:
+  push:
+    branches: [ main ]
+  pull_request:
+    branches: [ main ]
+
+jobs:
+  security:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      
+      - name: Set up Python
+        uses: actions/setup-python@v5
+        with:
+          python-version: '3.12'
+          
+      - name: Bandit (SAST)
+        run: |
+          pip install bandit
+          bandit -r honeypot/ -x tests/
+          
+      - name: Gitleaks (Secret Scan)
+        uses: gitleaks/gitleaks-action@v2
+        env:
+          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+
+  lint-python:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - name: Set up Python
+        uses: actions/setup-python@v5
+        with:
+          python-version: '3.12'
+      - name: Install Linting Tools
+        run: pip install flake8 black
+      - name: Run Flake8
+        run: flake8 honeypot/
+      - name: Run Black Check
+        run: black --check honeypot/
+
+  lint-nextjs:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - name: Set up Node
+        uses: actions/setup-node@v4
+        with:
+          node-version: '20'
+      - name: Install dependencies
+        working-directory: ./dashboard
+        run: npm install
+      - name: Run ESLint
+        working-directory: ./dashboard
+        run: npm run lint
+
+  build:
+    needs: [security, lint-python, lint-nextjs]
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - name: Build Honeypot Image
+        run: docker build ./honeypot -t honeytrap-backend
+      - name: Build Dashboard Image
+        run: docker build ./dashboard -t honeytrap-dashboard
